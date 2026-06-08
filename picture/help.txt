@@ -1,0 +1,145 @@
+train file pt với yolov8s trên môi trường ubuntu 22.04
+bạn có thể dùng máy ảo wsl trên win nếu ko muốn cái hệ điều hành
+
+# Kiểm tra card GPU có không
+nvidia-smi
+
+# Kiểm tra CUDA
+nvcc --version
+Nên có CUDA để train cho nhanh
+
+#cập nhật
+sudo apt-get update
+
+# Cập nhật pip
+pip install --upgrade pip
+
+# Cài pip
+sudo apt install python3-pip python3-venv -y
+
+# Tạo môi trường ảo (tránh xung đột thư viện)
+python3 -m venv yolo_env
+
+# Kích hoạt môi trường ảo
+source yolo_env/bin/activate
+
+#Cài thư viện
+pip install "ultralytics==8.0.196" roboflow opencv-python-headless
+
+pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Tạo thư mục làm việc
+mkdir -p ~/yolo_project/dataset
+cd ~/yolo_project
+
+Copy toàn bộ file dataset tải từ roboflow vào thư mục dataset
+(hiển thị ảnh_1)
+# Tạo file train
+nano train.py
+
+from ultralytics import YOLO
+
+model = YOLO('yolov8s.pt')
+
+model.train(
+    data="/home/your_username/yolo_project/dataset/data.yaml",  
+    epochs=150,
+    imgsz=640,
+    batch=16,       # Giảm xuống 8 nếu bị lỗi RAM
+    name="my_model",
+    device=0        # Dùng GPU, đổi thành "cpu" nếu không có GPU
+)
+
+# Chạy file train
+python3 train.py
+
+#export to ONNX
+yolo export model=runs/detect/my_model/weights/best.pt imgsz=640 format=onnx opset=11
+
+Convert to hef (tôi dùng ai hat 13 tops sử dụng hailo8l hướng dẫn dưới có thể ko hoạt động với hailo8 hoặc
+hailo 10)
+git clone https://github.com/Datnewlevel/ai-hat-pi5.git
+cd ~/ai-hat-pi5
+
+Cấu trúc file phải như sau
+ai-hat-pi5/
+├── Dockerfile
+├── hailo_dataflow_compiler-3.30.0-py3-none-linux_x86_64.whl  ← đặt ở đây
+├── hailort_4.20.0_amd64.deb                                   ← đặt ở đây
+├── hailort-4.20.0-cp310-cp310-linux_x86_64.whl                ← đặt ở đây
+├── jaxlib-0.4.13-cp310-cp310-manylinux2014_x86_64.whl         ← đặt ở đây
+├── best.onnx                                                   ← file của bạn
+├── calibration_imgs/                                           ← ảnh calibration
+...
+
+#Lệnh ramdom 64 ảnh mỗi class cho vào folder calibration_imgs
+chmod +x calibration-gathering.sh
+./calibration-gathering.sh \
+    ~/yolo_project/dataset/train/images \
+    ~/yolo_project/dataset/train/labels \
+    ~/onnx-to-hef-yolov8/calibration_imgs \
+    16 4
+
+16: số ảnh trên class
+4: số class
+Bạn tuỳ chọn số lượng ảnh miễn sao đủ 64 ảnh là dc cố gắng số ảnh các class đều nhau
+
+#Sửa file entrypoint.sh
+nano entrypoint.sh
+#Sửa số class cho đúng với số class của bạn
+
+#Sửa file
+nano yolov8s_nms_config.json  
+#Sửa số class cho đúng với số class của bạn
+
+#Build docker
+sudo docker run -v $(pwd):/workspace --gpus all --ipc=host hailo_converter:latest
+
+#Khi thành công sẽ ra file hef trong thư mục results
+#Cài đặt ai hat trên pi
+
+#update
+sudo apt update 
+
+sudo apt full-upgrade
+
+#cài package
+sudo apt install dkms # very important**,** otherwise the driver **won't** be installed correctly 
+
+sudo apt install hailo-all
+
+#Sau đó clone và cài Hailo-Apps-Infra
+git clone https://github.com/hailo-ai/hailo-apps-infra.git
+
+cd hailo-apps-infra
+
+sudo ./scripts/cleanup_installation.sh
+
+sudo ./install.sh
+#Cài khá lâu nên phải đợi nó chạy hết ko được bấm dừng giữa chừng
+
+#test
+cd hailo-apps-infra
+source setup_env.sh   
+hailo-detect
+#gõ lệnh --help để bt các tính năng
+hailo-detect --help
+
+#copy file detection.py từ đường dẫn sau
+/home/pi/hailo-apps-infra/hailo_apps/python/pipeline_apps/detection
+
+#Dán vào thư mục hailo-apps-infra
+#Nhớ tạo file label.json cấu trúc như sau
+
+{
+  "detection_threshold": 0.5,
+  "max_boxes": 200,
+  "labels": [
+    "unlabeled",
+    "tag"
+  ]
+}
+
+Lệnh example:
+python detection.py -i usb -n /home/pi/Downloads/yolov8s.hef --labels-json labels.json
+

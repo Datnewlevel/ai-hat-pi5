@@ -1,0 +1,11 @@
+*.log
+*.onnx
+*.har
+*.hef
+*tmp.json
+*.whl
+*.deb
+
+calibration_imgs/*
+!calibration_imgs/**/*.md
+!calibration_imgs/**/*.sh
