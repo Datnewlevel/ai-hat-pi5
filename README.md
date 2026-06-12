@@ -404,3 +404,10 @@ Example command to run detection:
 ```
 python detection.py -i usb -n /home/pi/Downloads/yolov8s.hef --labels-json labels.json
 ```
+
+Result screenshots:
+
+![result1](picture/ảnh3.png)
+![result2](picture/ảnh4.png)
+![result3](picture/ảnh5.png)
+![result4](picture/ảnh6.png)
